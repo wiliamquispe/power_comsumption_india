@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: dim_states
+    description: >
+      List of unique states idefied by stateid. 
+      Includes the latitude and longitude.
+
+  - name: fact_power_consumption
+    description: >
+      Power consumption by date and state on India.
