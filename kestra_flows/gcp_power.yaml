@@ -1,0 +1,145 @@
+id: gcp_enery
+namespace: project
+description: |
+  The CSV Data used in the course: https://www.kaggle.com/api/v1/datasets/download/twinkle0705/state-wise-power-consumption-in-india
+
+inputs:
+  - id: data
+    type: SELECT
+    displayName: Select data
+    values: [dataset_tk, long_data_]
+    defaults: dataset_tk
+
+variables:
+  file: "{{inputs.data}}.csv"
+  gcs_file: "gs://{{kv('GCP_BUCKET_NAME')}}/{{vars.file}}"
+  table: "{{kv('GCP_DATASET')}}.{{inputs.data}}"
+  data: "{{outputs.extract.outputFiles[inputs.data ~ '.csv']}}"
+
+tasks:
+  - id: set_label
+    type: io.kestra.plugin.core.execution.Labels
+    labels:
+      file: "{{render(vars.file)}}"
+      data: "{{inputs.data}}"
+
+  - id: extract
+    type: io.kestra.plugin.scripts.shell.Commands
+    outputFiles:
+      - "*.csv"
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - wget -q https://www.kaggle.com/api/v1/datasets/download/twinkle0705/state-wise-power-consumption-in-india -O data.zip
+      - unzip data.zip
+
+  - id: upload_to_gcs
+    type: io.kestra.plugin.gcp.gcs.Upload
+    from: "{{render(vars.data)}}"
+    to: "{{render(vars.gcs_file)}}"
+  
+  - id: if_dataset
+    type: io.kestra.plugin.core.flow.If
+    condition: "{{inputs.data == 'dataset_tk'}}"
+    then:
+    - id: bq_dataset_ext
+      type: io.kestra.plugin.gcp.bigquery.Query
+      sql: |
+        CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_ext`
+        (
+            datetime STRING OPTIONS (description = 'The date and time when the energy was measured.'),
+            punjab NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            haryana NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            rajasthan NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            delhi NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            up NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            uttarakhand NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            hp NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            j_k NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            chandigarh NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            chhattisgarh NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            gujarat NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            mp NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            maharashtra NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            goa NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            dnh NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            andhra_pradesh NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            telangana NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            karnataka NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            kerala NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            tamil_nadu NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            pondy NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            bihar NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            jharkhand NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            odisha NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            west_bengal NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            sikkim NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            arunachal_pradesh NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            assam NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            manipur NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            meghalaya NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            mizoram NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            nagaland NUMERIC OPTIONS (description = 'The energy measured of the state.'),
+            tripura NUMERIC OPTIONS (description = 'The energy measured of the state.')
+        )
+        OPTIONS (
+            format = 'CSV',
+            uris = ['{{render(vars.gcs_file)}}'],
+            skip_leading_rows = 1,
+            ignore_unknown_values = TRUE
+            );
+
+    - id: bq_dataset
+      type: io.kestra.plugin.gcp.bigquery.Query
+      sql: |
+        CREATE OR REPLACE TABLE `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}`
+        AS
+        SELECT
+          *
+        FROM `{{render(vars.table)}}_ext`;
+
+
+  - id: if_long_data
+    type: io.kestra.plugin.core.flow.If
+    condition: "{{inputs.data == 'long_data_'}}"
+    then:
+    - id: bq_long_data_ext
+      type: io.kestra.plugin.gcp.bigquery.Query
+      sql: |
+        CREATE OR REPLACE EXTERNAL TABLE `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}_ext`
+        (
+            state STRING OPTIONS (description = 'The state where the use was measured.'),
+            region STRING OPTIONS (description = 'The region where the use was measured.'),
+            latitude NUMERIC OPTIONS (description = 'The latitute of region where the use was measured.'),
+            longitude NUMERIC OPTIONS (description = 'The longitude of region where the use was measured.'),
+            date STRING OPTIONS (description = 'The date and time when the energy was measured.'),
+            usage NUMERIC OPTIONS (description = 'The energy measured of the state.')
+        )
+        OPTIONS (
+            format = 'CSV',
+            uris = ['{{render(vars.gcs_file)}}'],
+            skip_leading_rows = 1,
+            ignore_unknown_values = TRUE
+            );
+
+    - id: bq_long_data
+      type: io.kestra.plugin.gcp.bigquery.Query
+      sql: |
+        CREATE OR REPLACE TABLE `{{kv('GCP_PROJECT_ID')}}.{{render(vars.table)}}`
+        AS
+        SELECT
+          *
+        FROM `{{render(vars.table)}}_ext`;
+
+  - id: purge_files
+    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
+    description: If you'd like to explore Kestra outputs, disable it.
+    disabled: false
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      serviceAccount: "{{kv('GCP_CREDS')}}"
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"
